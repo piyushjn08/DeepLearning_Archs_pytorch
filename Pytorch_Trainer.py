@@ -4,7 +4,7 @@ from thop import profile
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
-
+from torchprofile import profile_macs
 '''
 Functionalities
 1. Auto Assign DataLoader
@@ -82,10 +82,14 @@ class pytorch_trainer:
         torch.save(checkpoint, save_string)
         
         
-    def summary(self, inputs):
-        macs, params = profile(self.model, inputs=(inputs, ))
+    def summary(self, input_shape):
+        shape = tuple([1] + list(input_shape))
+        sample_input = torch.randn(shape)
+
+        #macs, params = profile(self.model, inputs=(sample_input,))
+        macs = profile_macs(self.model, sample_input)
         print("Macs:", round(macs/1000000,2), 'M', flush=True)
-        print("Params:", round(params/1000000,2),'M', flush=True)
+        #print("Params:", round(params/1000000,2),'M', flush=True)
 
     class pytorch_dataset: # pre-process incoming data (used when some augmentation is required in preprocessing)
         def __init__(self, X, y):

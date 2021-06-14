@@ -80,7 +80,7 @@ class ResNet50(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = self.maxpool(x)
-        
+
         x = self.conv2_1(x)
         x = self.conv2_2(x)
         x = self.conv2_3(x)
@@ -128,6 +128,7 @@ criteria = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr = 0.1)
 
 trainer = pytorch_trainer(model, criteria=criteria, optimizer=optimizer)
+print(trainer.summary(X.shape[1:]))
 #trainer.trace_model(input_shape=X.shape[1:])
 trainer.fit(X, y, epochs=10, calculate_acc=True)
 
