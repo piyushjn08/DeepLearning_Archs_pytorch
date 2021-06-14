@@ -5,6 +5,18 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
 
+'''
+Functionalities
+1. Auto Assign DataLoader
+2. Print Summary of Model
+3. Trace Model for output shapes
+4. Wrapped Training and Testing codes
+'''
+
+'''
+To Do : Criteria may have multiple parameters as input, find a user defined workaourd for loss calcuation requiring more than 2 inupts
+'''
+
 class pytorch_trainer: 
     def __init__(self, model, criteria, optimizer,
                     lr=0.1, lr_factor=0.1, lr_patience=5, device=None,
@@ -54,6 +66,12 @@ class pytorch_trainer:
                 if m.bias is not None:
                     nn.init.constant(m.bias, 0)
    
+    def trace_model(self, input_shape):
+        shape = tuple([1] + list(input_shape))
+        sample_input = torch.randn(shape)
+        module = torch.jit.trace(self.model, sample_input)
+        print(module)
+
     def enable_checkpoiting(self, path, savebest=False):
         self.checkpointing = True
         self.checkpoint_path = path
@@ -69,7 +87,7 @@ class pytorch_trainer:
         print("Macs:", round(macs/1000000,2), 'M', flush=True)
         print("Params:", round(params/1000000,2),'M', flush=True)
 
-    class pytorch_dataset: # pre-process incoming data (used when some randomness is required in preprocessing)
+    class pytorch_dataset: # pre-process incoming data (used when some augmentation is required in preprocessing)
         def __init__(self, X, y):
             self.X = X
             self.y = y
@@ -80,11 +98,14 @@ class pytorch_trainer:
         def __getitem__(self, index):
             return self.X[index], self.y[index]
 
-    # Only applicable for classifier models (so far, because of accuracy calculation)
     def fit(self, X, y, epochs, batch_size=1,trainClass=None, 
              validation=[], validationClass=None, 
-            verbose=1, shuffle=False, calculate_acc=True):
+            verbose=1, shuffle=False, calculate_acc=False):
+        '''
+        trainClass: Class defining any preprocessing required before sending data from training in batches
+        validationClass: Same as trainClass but for validation
 
+        '''
         self.batch_size = batch_size
         self.X = X
         self.y = y
@@ -106,8 +127,9 @@ class pytorch_trainer:
         self.training_loss = []
         self.validation_loss = []
 
-        bestTrainLoss = 9999999.0
-        bestValLoss   = 9999999.0
+        # First Loss can be used to avoid using arbitrary value
+        bestTrainLoss = 9999999.0 # To be implemented for saving best models
+        bestValLoss   = 9999999.0 
 
         print("\nTraining on:", self.device, flush=True)
         
@@ -130,7 +152,7 @@ class pytorch_trainer:
 
             # Print Epoch Results
             # Use Flush = True to avoid messing with tqdm prints
-            info_train = f"Epoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1],2)}"
+            info_train = f"\nEpoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1],2)}"
             info_val = f""
 
             if(calculate_acc):
