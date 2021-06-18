@@ -11,10 +11,13 @@ Functionalities
 2. Print Summary of Model
 3. Trace Model for output shapes
 4. Wrapped Training and Testing codes
+5. Easy CPU, GPU shifting
 '''
 
 '''
-To Do : Criteria may have multiple parameters as input, find a user defined workaourd for loss calcuation requiring more than 2 inupts
+To Do : 
++ Criteria may have multiple parameters as input, find a user defined workaourd for loss calcuation requiring more than 2 inupts
++ Loss calculation after complete batch has run (right now NN updates every batch)
 '''
 
 class pytorch_trainer: 
@@ -199,7 +202,7 @@ class pytorch_trainer:
                     y_categories = torch.argmax(preds, dim=1)
                     correct_predictions += (y_categories == y).long().sum().__float__()
                 
-                    tepoch.set_postfix({"loss":round(total_loss/batch_count,2), 
+                    tepoch.set_postfix({"loss":round(total_loss/batch_count,2),
                                     "acc":round(correct_predictions/batch_count, 2)})
                 else:
                     tepoch.set_postfix({"loss":round(total_loss/batch_count,2)})
