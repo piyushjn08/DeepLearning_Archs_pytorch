@@ -15,7 +15,7 @@ class conv_layer(nn.Module):
         return x
 
 class yolov1(nn.Module):
-    def __init__(self, inchannels, outclasses):
+    def __init__(self, inchannels, grid_dim, class_count):
         # input image size : 224, 224
         super(yolov1, self).__init__()
         self.conv1 = conv_layer(inchannels, 64, kernel_size=7, stride=2, padding=3)
@@ -37,6 +37,8 @@ class yolov1(nn.Module):
         self.conv13 = conv_layer(1024, 1024, kernel_size=3, stride=1, padding=1)
         self.conv14 = conv_layer(1024, 1024, kernel_size=3, stride=1, padding=1)
     
+        self.fc1 = nn.Linear(7*7*1024, 496)
+        self.fc2 = nn.Linear(496, grid_dim*grid_dim*(class_count + 5))
     def forward(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
@@ -58,5 +60,9 @@ class yolov1(nn.Module):
         x = self.conv12(x)
         x = self.conv13(x)
         x = self.conv14(x)
+
+        x = x.reshape(x.shape[0], -1)
+        x = self.fc1(x)
+        x = self.fc2(x)
 
         return x

@@ -6,8 +6,10 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from Pytorch_Trainer import pytorch_trainer
+from sklearn.model_selection import train_test_split
 
 DATASET_PATH = '/media/piyush/A33B-9070/Object_detection/Vision/Cats_dog_labeled_box/train.csv'
+GRID_DIM = (7,7)
 #%% Load Dataset
 dataset = pd.read_csv(DATASET_PATH)
 print(dataset.info())
@@ -29,7 +31,7 @@ print("Number of Images:", images.shape[0])
 dimentions_torch = torch.from_numpy(dimentions.astype(np.float32))
 image_sizes_torch = torch.FloatTensor(image_sizes)
 #%%Generate Grid for each image
-encoder = data_encoder_pytorch((7,7))
+encoder = data_encoder_pytorch(GRID_DIM)
 Xgrid, Ygrid, Xrel_c, Yrel_c, Xrel_w, Yrel_w = encoder.annotaion_encoding(dimentions_torch.clone(), image_sizes_torch)
 
 grid_coords = torch.hstack( (Xgrid.unsqueeze(1), Ygrid.unsqueeze(1)) )
@@ -40,10 +42,29 @@ class_count = 1
 
 grids = encoder.to_grids(grid_coords, rel_center, rel_center, classes, class_count)
 print(grids.shape)
+
+#%% Split Data
+X = images.reshape((-1, 3, 224, 224))
+y = grids.detach().cpu().numpy()
+
+print(type(X))
+print(type(y))
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+X_train = torch.FloatTensor(X_train)
+X_test  = torch.FloatTensor(X_test)
+y_train = torch.FloatTensor(y_train)
+y_test  = torch.FloatTensor(y_test)
+
+print(X_train.shape)
+print(y_train.shape)
 # %% load model
 from model import yolov1
 inchannels = 3
-model = yolov1(inchannels, 12)
+class_count = 1
+model = yolov1(inchannels, GRID_DIM[0], class_count)
+print(model)
 optimizer = torch.optim.Adam(model.parameters(), lr=2e-5, weight_decay=0)
 trainer = pytorch_trainer(model, criteria=None, optimizer=optimizer)
 trainer.summary(input_shape=(3, 224, 224))
