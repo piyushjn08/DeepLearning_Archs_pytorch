@@ -129,7 +129,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr = 0.1)
 
 trainer = pytorch_trainer(model, criteria=criteria, optimizer=optimizer)
 print(trainer.summary(X.shape[1:]))
-#trainer.trace_model(input_shape=X.shape[1:])
+
+#%% Train Model
 trainer.fit(X, y, epochs=10, calculate_acc=True)
 
 

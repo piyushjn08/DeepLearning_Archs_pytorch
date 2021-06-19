@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
 from torchprofile import profile_macs
+from torchstat import stat
 '''
 Functionalities
 1. Auto Assign DataLoader
@@ -91,7 +92,9 @@ class pytorch_trainer:
 
         #macs, params = profile(self.model, inputs=(sample_input,))
         macs = profile_macs(self.model, sample_input)
+        stat(self.model, input_shape)
         print("Macs:", round(macs/1000000,2), 'M', flush=True)
+
         #print("Params:", round(params/1000000,2),'M', flush=True)
 
     class pytorch_dataset: # pre-process incoming data (used when some augmentation is required in preprocessing)

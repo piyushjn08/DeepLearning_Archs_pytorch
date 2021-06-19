@@ -36,7 +36,7 @@ class data_encoder_pytorch:
 
         return batch
 
-    def annotaion_encoding(self, batch, image_size, box_format='cornered'):
+    def annotaion_encoding(self, bbox, image_size, box_format='cornered'):
         '''
         Inputs:
             batch : (batch_size, 4) in torch.FloatTensor
@@ -45,12 +45,11 @@ class data_encoder_pytorch:
             box_format = 'cornered' / 'centered'
         
         output:
-            batch : [batch_size, 6]
-                    [gridx, gridy, centerx, centery, rel_width, rel_height] 
+            batch : Xgrid, Ygrid, Xrel_c, Yrel_c, Xrel_w, Yrel_w
         '''
-        centered_batch = batch
+        centered_batch = bbox
         if box_format == 'cornered':
-            centered_batch = self.__cornered_to_centered__(batch)
+            centered_batch = self.__cornered_to_centered__(bbox)
         
         # Image and Grid Basic Parameters
         grid_dim  = self.grid_dim
@@ -92,7 +91,7 @@ class data_encoder_pytorch:
         Relative Width :  (batch_size, 2) [X, Y]
 
         Output:
-        bounding box coordinates [[xstart, ystart], [xend, yend]] 'Cornered' format
+        bounding box coordinates [x1, y1, x2, y2] 'Cornered' format
         '''
 
         grid_dim = self.grid_dim
@@ -129,6 +128,7 @@ class data_encoder_pytorch:
     # Only supports one detection per image, to be implemented for multiple detections per image
     def to_grids(self, grid_coords, rel_center, rel_width, classes, class_count, grids=None):
         '''
+        Call annotation_encoding to get all parameters
         Input:
         grid_coord     :  (batch_size, 2) [X, Y]
         Relative Center:  (batch_size, 2) [X, Y]
@@ -183,6 +183,29 @@ class data_encoder_pytorch:
         if(wait == True):
             key = cv2.waitKey(0)
             return key
+
+    def resize_bb_coord(self, actual_im_size, target_im_size, bbox, format='cornered'):
+        '''
+        actual_im_size : (batch_size, 2) [Height, Width]
+        target_im_size : [Height, Width]
+        bbox           : (batch_size, 4), [x1, y1, x2, y2] or [x, y, w, h] :: cornered / centered
+        '''
+        
+        if format == 'centered':
+            bbox = self.__centered_to_cornered__(bbox)
+        
+        actual_im_size = torch.FloatTensor(actual_im_size)
+        target_im_size = torch.FloatTensor([ [target_im_size[0], target_im_size[1]] for _ in range(actual_im_size.shape[0])])
+        
+        ratio_width  = (target_im_size[:, 1]/actual_im_size[:, 1]).detach().cpu().numpy()
+        ratio_height = (target_im_size[:, 0]/actual_im_size[:, 0]).detach().cpu().numpy()
+
+        bbox[:, 0] = bbox[:, 0] * ratio_width
+        bbox[:, 1] = bbox[:, 1] * ratio_height
+        bbox[:, 2] = bbox[:, 2] * ratio_width
+        bbox[:, 3] = bbox[:, 3] * ratio_height
+
+        return bbox.astype(np.int32)
 
 class data_encoder:
     def __init__(self, grid_dim):

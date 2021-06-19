@@ -13,27 +13,18 @@ print(dataset.info())
 
 encoder = data_encoder_pytorch((7,7))
 images = []
+image_sizes = []
 dimentions = dataset.values[:, 3:7]
 
 for path in tqdm(dataset['path'].values):
     image = cv2.imread(path)
+    image_sizes.append([image.shape[0], image.shape[1]])
     image = cv2.resize(image, (224, 224))
     images.append(image)
-
 images = np.array(images)
+dimentions = encoder.resize_bb_coord(image_sizes, (224, 224), dimentions)
 
-print(images.shape)
-
-
-'''
+print("Number of Images:", images.shape[0])
 for i in range(5):
-    path = dataset.values[i, 0]
-    print(path)
-    image = cv2.imread(path)
-    dimentions = dataset.values[i, 3:7]
-    print(dimentions)
-    print(image.shape)
-    encoder.show_image(dimentions, image)
-'''
+    encoder.show_image(dimentions[i], images[i])
 
-# %%
