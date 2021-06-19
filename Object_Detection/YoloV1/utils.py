@@ -39,9 +39,9 @@ class data_encoder_pytorch:
     def annotaion_encoding(self, bbox, image_size, box_format='cornered'):
         '''
         Inputs:
-            batch : (batch_size, 4) in torch.FloatTensor
+            bbox : (batch_size, 4) in torch.FloatTensor
                     [x1, y1, x2, y2]'cornered' or [x, y, w, h]'centered'
-            image_size = (batch_size, 2) [height, width]
+            image_size = (batch_size, 2) [height, width] torch.FloatTensor
             box_format = 'cornered' / 'centered'
         
         output:
@@ -50,7 +50,7 @@ class data_encoder_pytorch:
         centered_batch = bbox
         if box_format == 'cornered':
             centered_batch = self.__cornered_to_centered__(bbox)
-        
+
         # Image and Grid Basic Parameters
         grid_dim  = self.grid_dim
         image_width  = image_size[:, 1]
@@ -145,15 +145,15 @@ class data_encoder_pytorch:
             grids = torch.zeros((batch_size, self.grid_dim[0], self.grid_dim[1], class_count + 5))
 
         for i in range(batch_size):
-            gridx  = grid_coords[i, 0]
-            gridy  = grid_coords[i, 1]
+            gridx  = grid_coords[i, 0].long() # long not required as numpy
+            gridy  = grid_coords[i, 1].long()
             cx     = rel_center[i, 0]
             cy     = rel_center[i, 1]
             dx     = rel_width[i, 0]
             dy     = rel_width[i, 1]
 
-            target = classes[i]
-            grids[i, gridy, gridx, target] = 1.0          # Class of object
+            target = classes[i].long()                    # Location of Class
+            grids[i, gridy, gridx, target] = 1.0          # Class is present
             grids[i, gridy, gridx, class_count + 0] = 1.0 # Presence of Object 
             grids[i, gridy, gridx, class_count + 1] = cx  # Center X
             grids[i, gridy, gridx, class_count + 2] = cy  # Center Y
@@ -182,6 +182,7 @@ class data_encoder_pytorch:
         cv2.imshow(title, image)
         if(wait == True):
             key = cv2.waitKey(0)
+            cv2.destroyAllWindows()
             return key
 
     def resize_bb_coord(self, actual_im_size, target_im_size, bbox, format='cornered'):
@@ -512,10 +513,10 @@ class data_encoder:
             return key
 
 if __name__ == '__main__':
-    encoder = data_encoder_pytorch((10,10))
-    image_size = torch.FloatTensor([[100,100], 
+    encoder = data_encoder_pytorch((7,7))
+    image_size = torch.FloatTensor([[400,600], 
                                     [100, 100]])
-    coordinates = [[0.0, 0.0, 9.0, 39.0], 
+    coordinates = [[333, 72, 425, 158], 
                    [30.0, 30.0, 60.0, 60.0]]
     coordinates = torch.FloatTensor(coordinates)
 
@@ -524,6 +525,11 @@ if __name__ == '__main__':
     grid_coord = torch.hstack((Xgrid.unsqueeze(1), Ygrid.unsqueeze(1)))
     rel_center = torch.hstack((Xrel_c.unsqueeze(1), Yrel_c.unsqueeze(1)))
     rel_width  = torch.hstack((Xrel_w.unsqueeze(1), Yrel_w.unsqueeze(1)))
+
+    print(Xgrid)
+    print(Ygrid)
+    print(Xrel_c)
+    print(Yrel_c)
 
     coords = encoder.decode_grid(image_size, grid_coord, rel_center, rel_width)
     print(coords)
