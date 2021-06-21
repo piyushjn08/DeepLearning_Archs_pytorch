@@ -189,8 +189,14 @@ class pytorch_trainer:
                 batch_count = batch_count + 1
 
                 # Forward Pass
+                if True in torch.isnan(X):
+                    print("NAN in image")
+                else:
+                    print("No NAN")
+                print(X.shape)
                 preds = self.model.forward(X)
-                
+                print("PREDICTION FROM TRAINER")
+                print(preds)
                 # Calculate Loss
                 loss = self.criteria(preds, y) # Predictions, correct index in each prediction
                 total_loss = total_loss + loss.item()

@@ -46,6 +46,8 @@ class FocalLoss(torch.nn.Module):
             print(actual_reshaped)
             print("PREDICTION_RESHAPED")
             print(prediction_reshaped)
+            print('PREDICTION RAW')
+            print(prediction)
             print("NANNANANANANAN")
 
         #===========CONFIDENCE LOSS============
@@ -70,3 +72,14 @@ class FocalLoss(torch.nn.Module):
         return loss
 
 
+#%% TEST SECTION
+import torch
+i = torch.FloatTensor([[0, 0, 1], [2,4,5], [0, 3, 5]])
+a = torch.log(i)
+print(torch.isnan(a))
+if( True in torch.isnan(a)):
+    print("yes")
+else:
+    print("no")
+
+# %%
