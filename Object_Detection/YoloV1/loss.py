@@ -39,6 +39,15 @@ class FocalLoss(torch.nn.Module):
         regression_loss = self.lambda_obj * regression_loss
         print("Regression Loss:", regression_loss.item())
 
+        if(torch.isnan(regression_loss)):
+            print("ACTUAL PRESENCE")
+            print(actual_presence)
+            print("ACTUAL RESHAPED")
+            print(actual_reshaped)
+            print("PREDICTION_RESHAPED")
+            print(prediction_reshaped)
+            print("NANNANANANANAN")
+
         #===========CONFIDENCE LOSS============
         # If an object is detected in the box, the confidence loss (measuring the objectness of the box)
         confidence_loss  = self.mse( actual_presence * actual_reshaped[..., self.C:self.C+1], 
