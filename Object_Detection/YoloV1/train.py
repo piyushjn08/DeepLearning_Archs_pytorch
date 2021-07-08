@@ -7,14 +7,14 @@ from tqdm import tqdm
 import numpy as np
 from Pytorch_Trainer import pytorch_trainer
 from sklearn.model_selection import train_test_split
-from loss import FocalLoss
+from loss import FocalLoss, YoloLoss
 
-DATASET_PATH = '/media/piyush/A33B-9070/Object_detection/Vision/Cats_dog_labeled_box/train.csv'
+DATASET_PATH = '/media/crl/A33B-9070/Object_detection/Vision/Cats_dog_labeled_box/train.csv'
 GRID_DIM = (7,7)
 B = 1 # Anchors
 #%% Load Dataset
 dataset = pd.read_csv(DATASET_PATH)
-dataset = dataset[:10]
+dataset = dataset[:100]
 sample_count = dataset.shape[0]
 images = []
 image_sizes = []
@@ -48,6 +48,7 @@ print(grids.shape)
 
 #%% Split Data
 X = images.reshape((-1, 3, 224, 224))
+X = X / 255.0
 y = grids.detach().cpu().numpy()
 
 y = y.reshape( (-1, GRID_DIM[0]*GRID_DIM[1]*(class_count + B*5)) )
@@ -66,13 +67,14 @@ from model import yolov1
 inchannels = 3
 class_count = 1
 
-model     = yolov1(inchannels, GRID_DIM, class_count)
+model     = yolov1(inchannels, GRID_DIM, class_count).to('cuda')
 criteria  = FocalLoss(GRID_DIM, class_count, anchor_count=1)
-optimizer = torch.optim.Adam(model.parameters(), lr=2e-5, weight_decay=0)
-trainer = pytorch_trainer(model, criteria=criteria, optimizer=optimizer)
+#criteria = YoloLoss(GRID_DIM, class_count, B=1)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
+trainer = pytorch_trainer(model, criteria=criteria, optimizer=optimizer, lr_patience=15)
 #trainer.summary(input_shape=(3, 224, 224))
 
 #%% Train Model
-trainer.fit(X_train, y_train,epochs=2)
+trainer.fit(X_train, y_train, batch_size=8,epochs=1000, anomaly_detection=True)
 
 # %%

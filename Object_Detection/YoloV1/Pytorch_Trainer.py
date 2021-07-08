@@ -1,6 +1,5 @@
 import torch 
 import torch.nn as nn
-from thop import profile
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
@@ -45,7 +44,7 @@ class pytorch_trainer:
         # Weights Initialization
         if init_weights:
             self.initialize_weights()
-        
+            
         # Trends
         self.training_loss = []
         self.validation_loss = []
@@ -57,7 +56,7 @@ class pytorch_trainer:
         if(device is None):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        self.model.to(self.device)
+        self.model = self.model.to(self.device)
     
     def initialize_weights(self):
         for m in self.model.modules():
@@ -69,12 +68,10 @@ class pytorch_trainer:
                 nn.init.constant(m.weight, 1)
                 if m.bias is not None:
                     nn.init.constant(m.bias, 0)
-   
-    def trace_model(self, input_shape):
-        shape = tuple([1] + list(input_shape))
-        sample_input = torch.randn(shape)
-        module = torch.jit.trace(self.model, sample_input)
-        print(module)
+    
+    def clamp_grads(self, clip_value):
+        for p in self.model.parameters():
+            p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
 
     def enable_checkpoiting(self, path, savebest=False):
         self.checkpointing = True
@@ -88,13 +85,14 @@ class pytorch_trainer:
         
     def summary(self, input_shape):
         shape = tuple([1] + list(input_shape))
-        sample_input = torch.randn(shape)
-
+        sample_input = torch.randn(shape).to(device='cpu')
+        self.model = self.model.to(device='cpu')
         #macs, params = profile(self.model, inputs=(sample_input,))
         macs = profile_macs(self.model, sample_input)
         stat(self.model, input_shape)
         print("Macs:", round(macs/1000000,2), 'M', flush=True)
-
+        
+        self.model = self.model.to(device=self.device)
         #print("Params:", round(params/1000000,2),'M', flush=True)
 
     class pytorch_dataset: # pre-process incoming data (used when some augmentation is required in preprocessing)
@@ -110,7 +108,7 @@ class pytorch_trainer:
 
     def fit(self, X, y, epochs, batch_size=1,trainClass=None, 
              validation=[], validationClass=None, 
-            verbose=1, shuffle=False, calculate_acc=False):
+            verbose=1, shuffle=False, calculate_acc=False, anomaly_detection=False):
         '''
         trainClass: Class defining any preprocessing required before sending data from training in batches
         validationClass: Same as trainClass but for validation
@@ -119,6 +117,7 @@ class pytorch_trainer:
         self.batch_size = batch_size
         self.X = X
         self.y = y
+        self.anomaly_detection = anomaly_detection
 
         # Prepare Training Dataset
         if(trainClass is None):
@@ -142,7 +141,17 @@ class pytorch_trainer:
         bestValLoss   = 9999999.0 
 
         print("\nTraining on:", self.device, flush=True)
+        if(self.anomaly_detection):
+            print("Anomaly Detection Mode: ON")
+            torch.autograd.set_detect_anomaly(True)
+        else:
+            torch.autograd.set_detect_anomaly(False)
         
+        previous_weights = []
+        for param in self.model.parameters():
+            previous_weights.append(param.view(-1))
+        previous_weights = torch.cat(previous_weights)
+
         # Run Training Loop
         for epoc in range(epochs):
             start_time = time.time()
@@ -151,6 +160,15 @@ class pytorch_trainer:
             total_loss, train_acc = self.__train_batch__(self.train_dataLoader, epoc, calculate_acc)
             self.training_loss.append(total_loss)
 
+            current_weights = []
+            for param in self.model.parameters():
+                current_weights.append(param.view(-1))
+            current_weights = torch.cat(current_weights)
+            
+            if(torch.all(current_weights.eq(previous_weights))):
+                print("Both weights are equal")
+
+            previous_weights = current_weights
             # Validate
             if(do_validation):
                 val_loss, val_acc = self.__validate_batch__(self.val_dataLoader, calculate_acc)
@@ -162,7 +180,7 @@ class pytorch_trainer:
 
             # Print Epoch Results
             # Use Flush = True to avoid messing with tqdm prints
-            info_train = f"\nEpoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1],2)}"
+            info_train = f"\nEpoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1],4)}"
             info_val = f""
 
             if(calculate_acc):
@@ -178,7 +196,7 @@ class pytorch_trainer:
             print(info_train + info_val + "\n", flush=True)
 
     def __train_batch__(self, dataLoader, epoc, calculate_acc):
-        self.model.train(True)
+        self.model = self.model.train(True)
         batch_count = 0
         total_loss = 0
         correct_predictions = 0
@@ -186,24 +204,49 @@ class pytorch_trainer:
             for X, y in tepoch:
                 X = X.to(device=self.device)
                 y = y.to(device=self.device)
-                batch_count = batch_count + 1
 
+                batch_count = batch_count + 1
                 # Forward Pass
-                if True in torch.isnan(X):
-                    print("NAN in image")
-                else:
-                    print("No NAN")
-                print(X.shape)
                 preds = self.model.forward(X)
-                print("PREDICTION FROM TRAINER")
-                print(preds)
+                #print("PREDICTION FROM TRAINER")
+                #print(preds[0][:10])
+                #print("Max Value:", torch.max(preds))
                 # Calculate Loss
-                loss = self.criteria(preds, y) # Predictions, correct index in each prediction
+                loss = self.criteria.forward(preds, y) # Predictions, correct index in each prediction
                 total_loss = total_loss + loss.item()
 
                 # Backpropagate
                 self.optimizer.zero_grad()
+
+                #print("Max Weight:", torch.max(torch.cat(all_params)))
+                #print("Min Weight:", torch.min(torch.abs(torch.cat(all_params))))
                 loss.backward()
+                if(True in torch.isnan(self.model.conv1.conv.weight.grad)):
+                    print("NaN in Conv1")
+                    print(self.model.conv1.conv.weight.grad)
+                    print(self.model.conv1.conv.weight.grad.shape)
+                    print("Max Value:", torch.max(self.model.conv1.conv.weight.grad))
+                    import sys
+                    print("Closing Program due to NaN detection")
+                    sys.exit(-1)
+                if(True in torch.isnan(self.model.conv2.conv.weight.grad)):
+                    print("NaN in Conv2")
+                    print(self.model.conv2.conv.weight.grad)
+                    print(self.model.conv2.conv.weight.grad.shape)
+                    print("Max Value:", torch.max(self.model.conv2.conv.weight.grad))
+                    import sys
+                    print("Closing Program due to NaN detection")
+                    sys.exit(-1)
+                if(True in torch.isnan(self.model.conv12.conv.weight.grad)):
+                    print("NaN in Conv12")
+                    print(self.model.conv12.conv.weight.grad)
+                    print(self.model.conv12.conv.weight.grad.shape)
+                    print("Max Value:", torch.max(self.model.conv12.conv.weight.grad))
+                    import sys
+                    print("Closing Program due to NaN detection")
+                    sys.exit(-1)
+                
+                #nn.utils.clip_grad_norm(self.model.parameters(), 0.25)
                 self.optimizer.step()
 
                 # Batch Accuracy
@@ -227,7 +270,7 @@ class pytorch_trainer:
         return total_loss, None
     
     def __validate_batch__(self, dataLoader, calculate_acc):
-        self.model.Train(False)
+        self.model = self.model.eval()
         batch_count = 0
         total_loss = 0
         correct_predictions = 0
