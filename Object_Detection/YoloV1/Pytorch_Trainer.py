@@ -57,7 +57,8 @@ class pytorch_trainer:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         self.model = self.model.to(self.device)
-    
+        self.addl_fn = self.addl_criteria()
+
     def initialize_weights(self):
         for m in self.model.modules():
             if isinstance(m, nn.Conv2d):
@@ -73,9 +74,10 @@ class pytorch_trainer:
         for p in self.model.parameters():
             p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
 
-    def enable_checkpoiting(self, path, savebest=False):
+    def enable_checkpointing(self, path, save_best=False):
         self.checkpointing = True
         self.checkpoint_path = path
+        self.save_best = save_best
 
     def save_model(self, epoc, value):
         checkpoint = {'state_dict':self.model.state_dict(), 'optimizer':self.optimizer.state_dict()}
@@ -106,19 +108,53 @@ class pytorch_trainer:
         def __getitem__(self, index):
             return self.X[index], self.y[index]
 
+    class addl_criteria:
+        def __init__(self):
+            pass
+        def start(self):
+            pass
+        def between(self, preds, actual):
+            pass
+        def end(self):
+            pass
+        
+
     def fit(self, X, y, epochs, batch_size=1,trainClass=None, 
-             validation=[], validationClass=None, 
-            verbose=1, shuffle=False, calculate_acc=False, anomaly_detection=False):
+             validation=[], validationClass=None,
+             verbose=1, shuffle=False, calculate_acc=False, 
+             anomaly_detection=False, addl_fn=None):
+        
         '''
         trainClass: Class defining any preprocessing required before sending data from training in batches
         validationClass: Same as trainClass but for validation
-
+        checkpoint_path: Path where checkpoint has to be saved
+        save_best:  save only if loss is improved
+        calculate_acc: Calculate accuracy of categorical output
+        anomaly_detection: Debug mode for NaN outputs
+        addl_fn: class defining function as start, between and end of epoch
         '''
+
         self.batch_size = batch_size
         self.X = X
         self.y = y
         self.anomaly_detection = anomaly_detection
-
+        
+        # Set Training Configurations
+        print("\nTraining on:", self.device, flush=True)
+        if(self.anomaly_detection):
+            print("Anomaly Detection Mode: ON")
+            torch.autograd.set_detect_anomaly(True)
+        else:
+            torch.autograd.set_detect_anomaly(False)
+        
+        previous_weights = []
+        for param in self.model.parameters():
+            previous_weights.append(param.view(-1))
+        previous_weights = torch.cat(previous_weights)
+        
+        if(addl_fn is not None):
+            self.addl_fn = addl_fn
+        
         # Prepare Training Dataset
         if(trainClass is None):
             trainClass = self.pytorch_dataset(X,y)
@@ -136,51 +172,54 @@ class pytorch_trainer:
         self.training_loss = []
         self.validation_loss = []
 
-        # First Loss can be used to avoid using arbitrary value
-        bestTrainLoss = 9999999.0 # To be implemented for saving best models
-        bestValLoss   = 9999999.0 
+        best_train_loss = None
+        best_val_loss   = None
+        best_loss   = None
 
-        print("\nTraining on:", self.device, flush=True)
-        if(self.anomaly_detection):
-            print("Anomaly Detection Mode: ON")
-            torch.autograd.set_detect_anomaly(True)
-        else:
-            torch.autograd.set_detect_anomaly(False)
-        
-        previous_weights = []
-        for param in self.model.parameters():
-            previous_weights.append(param.view(-1))
-        previous_weights = torch.cat(previous_weights)
 
         # Run Training Loop
         for epoc in range(epochs):
             start_time = time.time()
 
-            # Train
+            ################## Train ##################
             total_loss, train_acc = self.__train_batch__(self.train_dataLoader, epoc, calculate_acc)
             self.training_loss.append(total_loss)
-
+            
+            ################### Audit Weight Changes ######################
             current_weights = []
             for param in self.model.parameters():
                 current_weights.append(param.view(-1))
             current_weights = torch.cat(current_weights)
             
             if(torch.all(current_weights.eq(previous_weights))):
-                print("Both weights are equal")
-
+                print("There is no change in weights, Model might have reached to its local/global minimum")
             previous_weights = current_weights
-            # Validate
+            
+            ################## Validation #########################
             if(do_validation):
                 val_loss, val_acc = self.__validate_batch__(self.val_dataLoader, calculate_acc)
                 self.validation_loss.append(val_loss)
 
-            # Save Checkpoint
-
+            ################## Save checkpoint #####################
+            if self.checkpointing == True: # saving enabled
+                if(self.save_best):
+                    if best_loss is None:
+                        print(f"saving model {epoc}-{round(total_loss, 2)}.pth.tar", flush=True)
+                        self.save_model(epoc, round(total_loss, 2))
+                        best_loss = total_loss
+                    elif best_loss > total_loss:
+                        print(f"Model improved from {best_loss} to {total_loss} saving model {epoc}-{round(total_loss, 2)}.pth.tar", flush=True)
+                        self.save_model(epoc, round(total_loss, 2))
+                        best_loss = total_loss
+                else:
+                    print(f"saving model {epoc}-{round(total_loss, 2)}.pth.tar", flush=True)
+                    self.save_model(epoc, round(total_loss, 2))
+            
             time_taken = time.time() - start_time
 
-            # Print Epoch Results
+            ################## Print Epoch Results #######################
             # Use Flush = True to avoid messing with tqdm prints
-            info_train = f"\nEpoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1],4)}"
+            info_train = f"\nEpoch {epoc}: Time Taken:{round(time_taken,2)}s, loss:{round(self.training_loss[-1], 4)}"
             info_val = f""
 
             if(calculate_acc):
@@ -200,6 +239,7 @@ class pytorch_trainer:
         batch_count = 0
         total_loss = 0
         correct_predictions = 0
+        self.addl_fn.start()
         with tqdm(dataLoader, unit="batch", desc=("Epoch " + str(epoc))) as tepoch:
             for X, y in tepoch:
                 X = X.to(device=self.device)
@@ -208,46 +248,15 @@ class pytorch_trainer:
                 batch_count = batch_count + 1
                 # Forward Pass
                 preds = self.model.forward(X)
-                #print("PREDICTION FROM TRAINER")
-                #print(preds[0][:10])
-                #print("Max Value:", torch.max(preds))
                 # Calculate Loss
                 loss = self.criteria.forward(preds, y) # Predictions, correct index in each prediction
                 total_loss = total_loss + loss.item()
+                self.addl_fn.between(preds, y)
 
                 # Backpropagate
                 self.optimizer.zero_grad()
-
-                #print("Max Weight:", torch.max(torch.cat(all_params)))
-                #print("Min Weight:", torch.min(torch.abs(torch.cat(all_params))))
                 loss.backward()
-                if(True in torch.isnan(self.model.conv1.conv.weight.grad)):
-                    print("NaN in Conv1")
-                    print(self.model.conv1.conv.weight.grad)
-                    print(self.model.conv1.conv.weight.grad.shape)
-                    print("Max Value:", torch.max(self.model.conv1.conv.weight.grad))
-                    import sys
-                    print("Closing Program due to NaN detection")
-                    sys.exit(-1)
-                if(True in torch.isnan(self.model.conv2.conv.weight.grad)):
-                    print("NaN in Conv2")
-                    print(self.model.conv2.conv.weight.grad)
-                    print(self.model.conv2.conv.weight.grad.shape)
-                    print("Max Value:", torch.max(self.model.conv2.conv.weight.grad))
-                    import sys
-                    print("Closing Program due to NaN detection")
-                    sys.exit(-1)
-                if(True in torch.isnan(self.model.conv12.conv.weight.grad)):
-                    print("NaN in Conv12")
-                    print(self.model.conv12.conv.weight.grad)
-                    print(self.model.conv12.conv.weight.grad.shape)
-                    print("Max Value:", torch.max(self.model.conv12.conv.weight.grad))
-                    import sys
-                    print("Closing Program due to NaN detection")
-                    sys.exit(-1)
-                
-                #nn.utils.clip_grad_norm(self.model.parameters(), 0.25)
-                self.optimizer.step()
+                self.optimizer.step()             
 
                 # Batch Accuracy
                 if calculate_acc:
@@ -262,7 +271,8 @@ class pytorch_trainer:
         total_loss = total_loss/batch_count
 
         self.scheduler.step(total_loss)
-        
+        self.addl_fn.end()
+
         if calculate_acc:
             acc = correct_predictions/ float(batch_count)
             return total_loss, acc

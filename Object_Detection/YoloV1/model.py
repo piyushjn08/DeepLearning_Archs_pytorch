@@ -66,31 +66,3 @@ class yolov1(nn.Module):
         x = F.sigmoid(self.fc2(x))
 
         return x
-
-class yolov1_(nn.Module):
-    def __init__(self, inchannels, grid_dim, class_count, B=1):
-        # input image size : 224, 224
-        super(yolov1_, self).__init__()
-        self.conv1 = conv_layer(inchannels, 1, kernel_size=7, stride=2, padding=3)
-        self.conv2 = conv_layer(1, 1, kernel_size=3, stride=1, padding=1)
-        self.maxp  = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.conv12 = conv_layer(1, 1, kernel_size=3, stride=2, padding=1)
-        self.fc1 = nn.Linear(7*7*1, 1)
-        self.fc2 = nn.Linear(1, grid_dim[0]*grid_dim[1]*(class_count + B*5))
-    def forward(self, data):
-        x = self.conv1(data) # Half
-        x = self.conv2(x)
-        x = self.maxp(x)
-
-        x = self.maxp(x)
-
-        x = self.maxp(x)
-
-        x = self.conv12(x)  #  Half
-
-        x = x.view(x.shape[0], -1)
-        x = F.relu(self.fc1(x))
-        x = F.sigmoid(self.fc2(x))
-
-        return x
-    

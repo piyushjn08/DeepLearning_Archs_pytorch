@@ -252,7 +252,6 @@ def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
 
     return intersection / (box1_area + box2_area - intersection + 1e-6)
 
-
 class data_encoder:
     def __init__(self, grid_dim):
         '''

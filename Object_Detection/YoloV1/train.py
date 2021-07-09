@@ -1,5 +1,5 @@
 #%% Imports and Declarations
-from utils import data_encoder_pytorch
+from utils import data_encoder_pytorch, intersection_over_union
 import pandas as pd
 import cv2, time
 import torch
@@ -8,6 +8,7 @@ import numpy as np
 from Pytorch_Trainer import pytorch_trainer
 from sklearn.model_selection import train_test_split
 from loss import FocalLoss, YoloLoss
+
 
 DATASET_PATH = '/media/crl/A33B-9070/Object_detection/Vision/Cats_dog_labeled_box/train.csv'
 GRID_DIM = (7,7)
@@ -72,9 +73,36 @@ criteria  = FocalLoss(GRID_DIM, class_count, anchor_count=1)
 #criteria = YoloLoss(GRID_DIM, class_count, B=1)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
 trainer = pytorch_trainer(model, criteria=criteria, optimizer=optimizer, lr_patience=15)
-#trainer.summary(input_shape=(3, 224, 224))
+#trainer.summary(input_shape=(3, 224, 224)) # Do not use before Training, it somehow messes with backpropagation and makes gradients NaN
 
 #%% Train Model
-trainer.fit(X_train, y_train, batch_size=8,epochs=1000, anomaly_detection=True)
+class addl_fn:
+    def __init__(self, gridsize, classes, boxes):
+        self.trainer = trainer
+        self.S = gridsize
+        self.C = classes
+        self.B = boxes
+        self.iou = 0.0
+        self.count = 0
 
-# %%
+    def start(self):
+        self.iou = 0.0
+        self.count = 0
+
+    def between(self, preds, actual):
+        box_presence = actual.view(-1,self.S[0], self.S[1], self.C + self.B*5) [..., self.C] > 0 # True False array
+        actual_box = actual.view(-1,self.S[0], self.S[1], self.C + self.B*5)[..., self.C + 1: self.C + 5]
+        predicted_box = preds.view(-1,self.S[0], self.S[1], self.C + self.B*5)[..., self.C + 1: self.C + 5]
+        iou = intersection_over_union(predicted_box[box_presence], actual_box[box_presence])
+        self.count += iou.shape[0]
+        self.iou += torch.sum(torch.flatten(iou))
+
+    def end(self):
+        print("IOU:", (self.iou / self.count).item(), flush=True)
+
+iou_loss = addl_fn(GRID_DIM, class_count, 1)
+trainer.enable_checkpointing('/home/crl/Music/Misc/checkpoints', save_best=True)
+trainer.fit(X_train, y_train, batch_size=8, epochs=100, anomaly_detection=True, addl_fn=iou_loss)
+
+# %% Load Model
+
