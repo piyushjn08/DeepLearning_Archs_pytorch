@@ -39,6 +39,9 @@ class yolov1(nn.Module):
     
         self.fc1 = nn.Linear(7*7*1024, 496)
         self.fc2 = nn.Linear(496, grid_dim[0]*grid_dim[1]*(class_count + B*5))
+
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()        
     def forward(self, data):
         x = self.conv1(data)
         x = self.conv2(x)
@@ -62,7 +65,7 @@ class yolov1(nn.Module):
         x = self.conv14(x)
 
         x = x.view(x.shape[0], -1)
-        x = F.relu(self.fc1(x))
-        x = F.sigmoid(self.fc2(x))
+        x = self.relu(self.fc1(x))
+        x = self.sigmoid(self.fc2(x))
 
         return x

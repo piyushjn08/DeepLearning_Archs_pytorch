@@ -31,7 +31,13 @@ class pytorch_trainer:
         self.model = model
         self.criteria = criteria
         self.optimizer = optimizer
-
+        self.device = device
+        
+        if(device is None):
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        self.model = self.model.to(self.device)
+        
         # Learning Rate
         self.lr = lr
         self.lr_factor = lr_factor
@@ -52,11 +58,6 @@ class pytorch_trainer:
         self.checkpointing = False
         self.checkpoint_path = ''
 
-        self.device = device
-        if(device is None):
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        self.model = self.model.to(self.device)
         self.addl_fn = self.addl_criteria()
 
     def initialize_weights(self):
@@ -84,6 +85,10 @@ class pytorch_trainer:
         save_string = f"{self.checkpoint_path}" + "/" + f"{epoc}-{value}.pth.tar"
         torch.save(checkpoint, save_string)
         
+    def load_model(self, path):
+        model = torch.load(path)
+        self.model.load_state_dict(model['state_dict'])
+        self.optimizer.load_state_dict(model['optimizer'])
         
     def summary(self, input_shape):
         shape = tuple([1] + list(input_shape))

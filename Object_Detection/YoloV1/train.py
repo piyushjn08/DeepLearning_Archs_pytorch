@@ -15,7 +15,7 @@ GRID_DIM = (7,7)
 B = 1 # Anchors
 #%% Load Dataset
 dataset = pd.read_csv(DATASET_PATH)
-dataset = dataset[:100]
+dataset = dataset[:]
 sample_count = dataset.shape[0]
 images = []
 image_sizes = []
@@ -68,7 +68,7 @@ from model import yolov1
 inchannels = 3
 class_count = 1
 
-model     = yolov1(inchannels, GRID_DIM, class_count).to('cuda')
+model     = yolov1(inchannels, GRID_DIM, class_count)
 criteria  = FocalLoss(GRID_DIM, class_count, anchor_count=1)
 #criteria = YoloLoss(GRID_DIM, class_count, B=1)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
@@ -101,8 +101,7 @@ class addl_fn:
         print("IOU:", (self.iou / self.count).item(), flush=True)
 
 iou_loss = addl_fn(GRID_DIM, class_count, 1)
-trainer.enable_checkpointing('/home/crl/Music/Misc/checkpoints', save_best=True)
+trainer.enable_checkpointing('/home/crl/Music/misc/checkpoints', save_best=True)
 trainer.fit(X_train, y_train, batch_size=8, epochs=100, anomaly_detection=True, addl_fn=iou_loss)
 
-# %% Load Model
-
+# %%

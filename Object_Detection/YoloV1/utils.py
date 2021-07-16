@@ -95,7 +95,7 @@ class data_encoder_pytorch:
         '''
 
         grid_dim = self.grid_dim
-        
+        print(image_size)
         image_width  = image_size[:, 1]
         image_height = image_size[:, 0]
         gridx_count  = float(grid_dim[1])
@@ -116,7 +116,8 @@ class data_encoder_pytorch:
         centery_offset = (grid_height * rel_center[:, 1])
         width          = (image_width  * rel_width[:, 0])
         height         = (image_height * rel_width[:, 1])
-
+        
+        print("Decode:", image_size, image_width, grid_width, grid_X_coord, centerx_offset, width)
         X1 = torch.floor(grid_X_coord + centerx_offset - width/2).unsqueeze(1)
         Y1 = torch.floor(grid_Y_coord + centery_offset - height/2).unsqueeze(1)
         X2 = torch.floor(grid_X_coord + centerx_offset + width/2).unsqueeze(1)
@@ -168,10 +169,10 @@ class data_encoder_pytorch:
         dimentions: [x1, y1, x2, y2]
         image     : OpenCV image
         '''
-        xstart = dimentions[0]
-        ystart = dimentions[1]
-        xend   = dimentions[2]
-        yend   = dimentions[3]
+        xstart = int(dimentions[0])
+        ystart = int(dimentions[1])
+        xend   = int(dimentions[2])
+        yend   = int(dimentions[3])
 
         cv2.rectangle(image, 
                         (xstart, ystart), 
@@ -207,6 +208,33 @@ class data_encoder_pytorch:
         bbox[:, 3] = bbox[:, 3] * ratio_height
 
         return bbox.astype(np.int32)
+
+    def find_box(self, prediction, grid_dim, classes, boxes, conf_threshold=0.8):
+        prediction = prediction.view(-1, grid_dim[0], grid_dim[1],classes+boxes*5)
+        confidence_scores = prediction[..., classes]
+
+        max_indexes = []
+        # return box with max confidence (only one box)
+        for cs in confidence_scores:
+            max_indexes.append(torch.argmax(cs))
+        
+        max_indexes = torch.Tensor(max_indexes)
+        row  = torch.div(max_indexes, grid_dim[1], rounding_mode='trunc')
+        col = max_indexes % grid_dim[0]  # Remainder
+        
+        grid_coords = []
+        rel_center = []
+        rel_width = []
+
+        for index, r in enumerate(row):
+            grid_coords.append((r.long(), col[index].long()))
+            rel_center.append(prediction[index, r.long(), col[index].long(), classes + 1: classes + 3])
+            rel_width.append(prediction[index, r.long(), col[index].long(), classes + 3: classes + 5])
+        grid_coords = torch.FloatTensor(grid_coords)
+        rel_center = torch.vstack(rel_center)
+        rel_width = torch.vstack(rel_width)
+
+        return grid_coords, rel_center, rel_width
 
 def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
     """
